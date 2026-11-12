@@ -12,6 +12,8 @@ const PORT = process.env.PORT || 3000;
 const API_KEY = process.env.API_KEY || '';
 const MAX_CONCURRENT = parseInt(process.env.MAX_CONCURRENT || '2');
 const TIMEOUT_MS = parseInt(process.env.TIMEOUT_MS || '45000');
+const HEADLESS = process.env.HEADLESS === 'true'; // default false (jalan lewat xvfb)
+const CHANNEL = process.env.CHANNEL || undefined; // isi 'chrome' kalau Google Chrome terpasang
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
 let browser = null;
@@ -21,8 +23,15 @@ const queue = [];
 async function getBrowser() {
   if (browser && browser.isConnected()) return browser;
   browser = await chromium.launch({
-    headless: true,
-    args: ['--no-sandbox', '--disable-dev-shm-usage', '--disable-blink-features=AutomationControlled'],
+    headless: HEADLESS,
+    ...(CHANNEL ? { channel: CHANNEL } : {}),
+    ignoreDefaultArgs: ['--enable-automation'],
+    args: [
+      '--no-sandbox',
+      '--disable-dev-shm-usage',
+      '--disable-blink-features=AutomationControlled',
+      '--window-size=1366,768',
+    ],
   });
   return browser;
 }
@@ -37,6 +46,22 @@ function acquire() {
 function release() {
   const next = queue.shift();
   if (next) next(); else running--;
+}
+
+async function clickTurnstile(page) {
+  for (const frame of page.frames()) {
+    if (!/challenges\.cloudflare\.com/.test(frame.url())) continue;
+    try {
+      const el = await frame.frameElement();
+      const box = await el.boundingBox();
+      if (!box) continue;
+      await page.mouse.move(box.x + 20, box.y + box.height / 2, { steps: 12 });
+      await page.waitForTimeout(300 + Math.random() * 400);
+      await page.mouse.click(box.x + 30, box.y + box.height / 2);
+      return true;
+    } catch {}
+  }
+  return false;
 }
 
 function isChallenge(html, title) {
@@ -60,10 +85,12 @@ async function solve(url, { wait = 0, proxy } = {}) {
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: TIMEOUT_MS });
 
     // tunggu challenge selesai
+    let tick = 0;
     while (Date.now() - start < TIMEOUT_MS) {
       const title = await page.title().catch(() => '');
       const html = await page.content().catch(() => '');
       if (!isChallenge(html, title)) break;
+      if (tick++ % 3 === 2) await clickTurnstile(page);
       await page.waitForTimeout(1500);
     }
     if (wait) await page.waitForTimeout(wait);
