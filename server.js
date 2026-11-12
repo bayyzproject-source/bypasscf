@@ -49,17 +49,28 @@ function release() {
 }
 
 async function clickTurnstile(page) {
-  for (const frame of page.frames()) {
-    if (!/challenges\.cloudflare\.com/.test(frame.url())) continue;
+  const frames = page.frames().filter((f) => /challenges\.cloudflare\.com/.test(f.url()));
+  if (!frames.length) { console.log('[turnstile] iframe belum muncul'); return false; }
+  for (const frame of frames) {
     try {
       const el = await frame.frameElement();
+      await el.scrollIntoViewIfNeeded().catch(() => {});
       const box = await el.boundingBox();
-      if (!box) continue;
-      await page.mouse.move(box.x + 20, box.y + box.height / 2, { steps: 12 });
-      await page.waitForTimeout(300 + Math.random() * 400);
-      await page.mouse.click(box.x + 30, box.y + box.height / 2);
+      if (!box || box.width < 50) { console.log('[turnstile] iframe tanpa ukuran, lewati'); continue; }
+      // checkbox ada di sisi kiri widget (+-20px dari kiri, tengah vertikal)
+      const x = box.x + 20 + Math.random() * 4;
+      const y = box.y + box.height / 2 + (Math.random() * 4 - 2);
+      await page.mouse.move(x - 150 - Math.random() * 100, y + 60, { steps: 8 });
+      await page.mouse.move(x, y, { steps: 18 });
+      await page.waitForTimeout(250 + Math.random() * 350);
+      await page.mouse.down();
+      await page.waitForTimeout(60 + Math.random() * 90);
+      await page.mouse.up();
+      console.log(`[turnstile] klik di (${Math.round(x)}, ${Math.round(y)}) iframe ${Math.round(box.width)}x${Math.round(box.height)}`);
       return true;
-    } catch {}
+    } catch (e) {
+      console.log('[turnstile] gagal klik:', e.message.split('\n')[0]);
+    }
   }
   return false;
 }
@@ -90,7 +101,7 @@ async function solve(url, { wait = 0, proxy } = {}) {
       const title = await page.title().catch(() => '');
       const html = await page.content().catch(() => '');
       if (!isChallenge(html, title)) break;
-      if (tick++ % 3 === 2) await clickTurnstile(page);
+      if (tick++ % 4 === 2) await clickTurnstile(page);
       await page.waitForTimeout(1500);
     }
     if (wait) await page.waitForTimeout(wait);
@@ -178,7 +189,7 @@ app.get('/screenshot', async (req, res) => {
       const title = await page.title().catch(() => '');
       const html = await page.content().catch(() => '');
       if (!isChallenge(html, title)) break;
-      if (tick++ % 3 === 2) await clickTurnstile(page);
+      if (tick++ % 4 === 2) await clickTurnstile(page);
       await page.waitForTimeout(1500);
     }
     const png = await page.screenshot({ type: 'png' });
