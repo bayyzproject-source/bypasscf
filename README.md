@@ -18,6 +18,7 @@ Header wajib: `x-api-key: KEY_KAMU`
 
 - `GET /fetch?url=...&raw=1` : HTML hasil bypass (tanpa raw = JSON lengkap)
 - `GET /cookies?url=...` : `cf_clearance` + user agent + cookies
+- `GET /screenshot?url=...&wait=20000` : gambar PNG yang dilihat browser (buat debug, bisa dibuka di browser HP pakai `&key=API_KEY`)
 - Opsional: `&proxy=http://user:pass@host:port`, `&wait=ms`
 
 ## Lisensi

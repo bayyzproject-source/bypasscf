@@ -154,6 +154,44 @@ app.get('/cookies', async (req, res) => {
   }
 });
 
+
+// GET /screenshot?url=...&wait=20000 -> PNG apa yang dilihat browser (buat debug)
+app.get('/screenshot', async (req, res) => {
+  const { url, proxy } = req.query;
+  const wait = Math.min(parseInt(req.query.wait || '20000'), TIMEOUT_MS);
+  if (!validUrl(url)) return res.status(400).json({ status: false, error: 'Parameter url tidak valid' });
+  await acquire();
+  let context;
+  try {
+    const b = await getBrowser();
+    context = await b.newContext({
+      userAgent: UA,
+      viewport: { width: 1366, height: 768 },
+      locale: 'en-US',
+      ...(proxy ? { proxy: { server: proxy } } : {}),
+    });
+    const page = await context.newPage();
+    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: TIMEOUT_MS });
+    const start = Date.now();
+    let tick = 0;
+    while (Date.now() - start < wait) {
+      const title = await page.title().catch(() => '');
+      const html = await page.content().catch(() => '');
+      if (!isChallenge(html, title)) break;
+      if (tick++ % 3 === 2) await clickTurnstile(page);
+      await page.waitForTimeout(1500);
+    }
+    const png = await page.screenshot({ type: 'png' });
+    res.setHeader('X-Page-Title', encodeURIComponent(await page.title().catch(() => '')));
+    res.type('png').send(png);
+  } catch (e) {
+    res.status(502).json({ status: false, error: e.message });
+  } finally {
+    if (context) await context.close().catch(() => {});
+    release();
+  }
+});
+
 app.get('/', (req, res) => res.json({ status: true, running, queued: queue.length }));
 
 app.listen(PORT, () => console.log(`CF bypass server by ${guard.CREATOR} jalan di port ${PORT}`));
