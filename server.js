@@ -4,9 +4,15 @@ const express = require('express');
 const guard = require('./guard');
 guard.verify();
 
-const { chromium } = require('playwright-extra');
-const stealth = require('puppeteer-extra-plugin-stealth')();
-chromium.use(stealth);
+// ENGINE=patchright -> Chrome yang ditambal anti-deteksi (lebih ampuh); default: playwright-extra + stealth
+const ENGINE = process.env.ENGINE || 'playwright-extra';
+let chromium;
+if (ENGINE === 'patchright') {
+  ({ chromium } = require('patchright'));
+} else {
+  ({ chromium } = require('playwright-extra'));
+  chromium.use(require('puppeteer-extra-plugin-stealth')());
+}
 
 const PORT = process.env.PORT || 3000;
 const API_KEY = process.env.API_KEY || '';
@@ -19,6 +25,13 @@ const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML,
 let browser = null;
 let running = 0;
 const queue = [];
+
+function ctxOptions(proxy) {
+  const base = ENGINE === 'patchright'
+    ? { viewport: null, locale: 'en-US' } // patchright: biarkan UA & viewport asli Chrome
+    : { userAgent: UA, viewport: { width: 1366, height: 768 }, locale: 'en-US' };
+  return { ...base, ...(proxy ? { proxy: { server: proxy } } : {}) };
+}
 
 async function getBrowser() {
   if (browser && browser.isConnected()) return browser;
@@ -85,12 +98,7 @@ async function solve(url, { wait = 0, proxy } = {}) {
   let context;
   try {
     const b = await getBrowser();
-    context = await b.newContext({
-      userAgent: UA,
-      viewport: { width: 1366, height: 768 },
-      locale: 'en-US',
-      ...(proxy ? { proxy: { server: proxy } } : {}),
-    });
+    context = await b.newContext(ctxOptions(proxy));
     const page = await context.newPage();
     const start = Date.now();
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: TIMEOUT_MS });
@@ -115,7 +123,7 @@ async function solve(url, { wait = 0, proxy } = {}) {
       url: page.url(),
       title,
       html,
-      userAgent: UA,
+      userAgent: await page.evaluate(() => navigator.userAgent).catch(() => UA),
       cookies,
       cf_clearance: (cookies.find((c) => c.name === 'cf_clearance') || {}).value || null,
       took_ms: Date.now() - start,
@@ -175,12 +183,7 @@ app.get('/screenshot', async (req, res) => {
   let context;
   try {
     const b = await getBrowser();
-    context = await b.newContext({
-      userAgent: UA,
-      viewport: { width: 1366, height: 768 },
-      locale: 'en-US',
-      ...(proxy ? { proxy: { server: proxy } } : {}),
-    });
+    context = await b.newContext(ctxOptions(proxy));
     const page = await context.newPage();
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: TIMEOUT_MS });
     const start = Date.now();

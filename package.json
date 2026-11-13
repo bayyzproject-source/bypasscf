@@ -1,14 +1,17 @@
 {
   "name": "cf-bypass-server",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Server bypass Cloudflare (Express + Playwright)",
   "author": "Hiyori senpai",
   "license": "SEE LICENSE IN LICENSE",
   "main": "server.js",
-  "scripts": { "start": "node server.js" },
+  "scripts": {
+    "start": "node server.js"
+  },
   "dependencies": {
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
+    "patchright": "^1.52.5",
     "playwright": "^1.49.1",
     "playwright-extra": "^4.3.6",
     "puppeteer-extra-plugin-stealth": "^2.11.2"
